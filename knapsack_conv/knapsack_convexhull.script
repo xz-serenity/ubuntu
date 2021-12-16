@@ -1,0 +1,312 @@
+use Benchmark qw(:all);
+use Benchmark ':hireswallclock';
+use File::Path qw(mkpath);
+use application 'polytope';
+
+declare $printprops = 0;
+declare $pointprops;
+declare $facetprops;
+declare $vertexprops;
+
+
+# prints a progressbar
+# @param Int got : the amount of stuff you have already got
+# @param Int total : the total amount of stuff
+# @param String text : additional text behind the bar.
+sub progress_bar {
+    my ( $got, $total, $text) = @_;
+    my $width = 10;
+    my $char = '=';
+    local $| = 1;
+    printf "|%-${width}s| $got/$total | %-80s \r",
+    $char x (($width)*$got/$total). '>', $text;
+}
+
+# applies a permutation to a matrix
+# @param Matrix m
+# @param Array<Int> Permutation
+# @return Matrix Permuation(m)
+sub apply_permutation($$){
+    my ($m,$perm) = @_;
+    my $rows = rows($m);
+    for(my $i=0; $i<$m->rows(); ++$i){
+	if($i != $perm->[$i]){
+	    $rows->[$perm->[$i]] = $m->row($i);
+	}
+    }	
+    new Matrix($rows);
+}
+
+
+# creates a certain knapsack polytope, where the coordinates from the normal vector
+# are the fibonacci sequence. Then it computes the vertices of the integer hull
+# @param String ch the prefered method 
+#                  (possible options: beneath_beyond, lrs, cdd)
+# @param Int d the dimension
+# @param Int b the right hand side of the inequality
+# @param Int start the first element of the fibonacci sequnce
+# @param Int start the second element of the fibonacci sequnce
+# @option Int inputSort 0=default sorting, 1=random sorting, 2=good sorting
+sub time_knapsack($$$$$;$) {
+    my ($ch, $d, $b, $first, $second, $options) = @_;  
+
+    my $sort_input = $options->{"inputSort"}; # sorting
+
+
+    # set defaults for options
+    if (!defined($options->{"inputSort"})) {
+	$sort_input=0;
+    }
+
+
+    my @ineq = ($b, -$first, -$second);
+ 
+    for (my $i=2; $i < $d; ++$i) {
+	my $third = $first + $second;
+	$first = $second;
+	$second = $third;
+	push @ineq, -$third;
+    }
+
+    my $k = knapsack(\@ineq);
+    my $points = integer_points_projection($k);
+
+
+    if ($sort_input != 0){
+	my $perm;
+	if ($sort_input == 3){
+	    $perm = rand_perm($points->rows());
+	    $points = apply_permutation($points,$perm);
+	}
+	if ($sort_input == 1){
+	    $perm = rand_perm($points->rows());
+	}elsif($sort_input == 2 || $sort_input == 3){
+	    my $p = new Polytope(POINTS=>$points,BOUNDED=>1,POINTED=>1,FEASIBLE=>1);
+	    $perm = new Array<Int>(sequence(0,$points->rows()));
+	    prefer_now "ppl"; $p->FACETS;
+	    my $vert=$p->VERTICES;
+	    my %vhash=();
+	    map { $vhash{"$_"} = 1, } @{rows($vert)};
+	    my $i = 0;
+	    my $k = $vert->rows();
+	    for (my $j=0; $j<$points->rows(); ++$j){
+		if(exists($vhash{$points->row($j).""})){
+		    $perm->[$j] = $i;
+		    ++$i;
+		} else {
+		    $perm->[$j] = $k;
+		    ++$k;
+		}
+	    }
+	}
+        $points = apply_permutation($points,$perm);
+    }
+
+    my $p = new Polytope(POINTS=>$points,BOUNDED=>1,POINTED=>1,FEASIBLE=>1);
+
+    prefer_now $ch; my $s = $p->get_schedule("FACETS");
+    #print "\n\n",join ("\n",$s->list),"\n\n";
+
+    my $t0;
+    my $t1;
+
+    # timing
+    if ($ch eq "libnormaliz"){
+	# code calling nmz directly:
+	$t0=Benchmark->new; normaliz_compute($p,from_facets=>0,facets=>1,verbose=>0,skip_long=>0); $t1=Benchmark->new;
+    }else{
+	prefer_now $ch; $t0=Benchmark->new; $s->apply($p); $t1=Benchmark->new;
+    }
+    my $t=timediff($t1,$t0);
+
+    print $facetprops $p->N_FACETS,";" if ($printprops);
+    print $pointprops $p->N_POINTS,";" if ($printprops);
+    print $vertexprops $p->N_VERTICES,";" if ($printprops);
+
+    #print timestr($t)."\n";
+    if ($ch eq "porta"){
+	return $t->cpu_c;
+    }else{
+	return $t->cpu_p;
+    }
+}
+
+
+# counts lattice points from several fibonacci knapsack polytopes
+# @param Array<String> ch the prefered method 
+#                         (possible options: beneath_beyond, lrs, cdd)
+# @param Int start_d the lower bound of the dimension
+# @param Int end_d the upper bound of the dimension
+# @param Int start_b the lower bound of the right hand side
+# @param Int end_b the upper bound of the right hand side
+# @param Int start the first element of the fibonacci sequnce
+# @param Int start the second element of the fibonacci sequnce
+# @option Int dimstep stepsize of the dimension
+# @option Int bstep stepsize of the right hand side
+# @option Int av number of experiments for one parameter set
+# @option String path output path
+# @option Hash only_once parameters that should run only once
+# @option Int time_limit maximum time (+10%) to skip following tests
+# @option Bool props print properties of the polytopes
+# @option Int inputSort 0=default sorting, 1=random sorting, 2=good sorting
+sub start_time_knapsack($$$$$$$;$) {
+    my ($ch, $start_d, $end_d, $start_b, $end_b, $first, $second, $options) = @_;
+ 
+    my $dimstep = $options->{"dimstep"};      # stepsize of the dimension
+    my $bstep = $options->{"bstep"};          # stepsize of the right hand side
+    my $av = $options->{"av"};                # number of experiements with the same parameterset
+    my $props = $options->{"props"};          # print properties of the polytopes
+    my $path = $options->{"path"};            # output path
+    my $only_once = $options->{"only_once"};  # which parameters should run only once
+    my $time_limit = $options->{"time_limit"}; # time limit
+    my $sort_input = $options->{"inputSort"};  # sorting
+
+    # set defaults for options
+    if (!defined($options->{"dimstep"})) {
+	$dimstep=1;
+    }
+
+    if (!defined($options->{"bstep"})) {
+	$bstep=10;
+    }
+
+    if (!defined($options->{"av"})) {
+	$av=10;
+    }
+
+    if (!defined($options->{"path"})) {
+        $path=".";
+    }
+
+    if (!defined($options->{"only_once"})) {
+        $only_once = {};
+    }
+
+    if (!defined($options->{"time_limit"})) {
+        $time_limit = 3600;
+    }
+
+
+    # create output path
+    if (!-d $path){
+	mkpath $path or die "can't create ouput directory: $path";
+    }
+
+    # convert $end_n to an array
+    if (!(ref($end_b) eq "ARRAY")){
+	my @array=();
+	map { push @array, $end_b } ($start_d .. $end_d);
+	$end_b = \@array;
+    }  
+
+    # for pretty print for progress bar
+    my $length_d = length $end_d; 
+    my $length_b = length $end_b->[0];
+
+    foreach my $chcode (@{$ch}) { 
+	my $skip = 0;
+	my $sortingString ="";	
+	if ($sort_input == 1){
+	    $sortingString = "_sort_random";
+	}elsif($sort_input == 2){
+	    $sortingString = "_sort_good";
+	}elsif($sort_input == 3){
+	    $sortingString = "_sort_goodRandom";
+	}
+	my $file= "$path/knapsack_".$chcode.$sortingString.".csv";
+	
+	if ($props) {
+	    open $pointprops,">","$path/npoints.csv"
+		or die "can't create outputfile npoints: $!";
+	    open $facetprops,">","$path/nfacets.csv"
+		or die "can't create outputfile nfacets: $!";
+	    open $vertexprops,">","$path/nvertices.csv"
+		or die "can't create outputfile nvertices: $!";
+	}
+	
+	print $pointprops '"time(dimension x right side) where dimension starts from '.$start_d.' to '.$end_d.' and the right hand side from '. $start_b.' to '. $end_b->[0].' (steps are '.$bstep.')"'. "\n" if ($props);
+	print $facetprops '"time(dimension x right side) where dimension starts from '.$start_d.' to '.$end_d.' and the right hand side from '. $start_b.' to '. $end_b->[0].' (steps are '.$bstep.')"'. "\n" if ($props);
+	print $vertexprops '"time(dimension x right side) where dimension starts from '.$start_d.' to '.$end_d.' and the right hand side from '. $start_b.' to '. $end_b->[0].' (steps are '.$bstep.')"'. "\n" if ($props);
+
+	# Open output file
+	open OUTPUT_FILE, ">$file"
+	    or die "can't create outputfile $file: $!";
+	$|=1;
+	OUTPUT_FILE->autoflush(1);
+
+	print OUTPUT_FILE '"time(dimension x right side) where dimension starts from '.$start_d.' to '.$end_d.' and the right hand side from '. $start_b.' to '. $end_b->[0].' (steps are '.$bstep.')"'. "\n";
+	print OUTPUT_FILE '"Matlab Commands: dim = '.$start_d.':'.$end_d.'  and  b ='.$start_b.':'.$bstep.':'.$end_b->[0].'  and mesh(points,b,import)"'."\n";
+
+	print "\n=== $chcode ===\n";
+	for(my $d = $start_d; $d <= $end_d; ++$d){
+
+	    for(my $b = $start_b; $b <= $end_b->[$d-$start_d]; $b+=$bstep){
+		# first time without timing. Just to make sure no recompiling comes in the way
+		#time_knapsack($chcode,$d,$b,$first,$second);
+
+		# For every set of parameters do $av experiments and take the average
+		my $t = 0;
+		my $date=localtime(time);
+		my $localav = exists($only_once->{ "$d,$b" }) ? 1: $av;
+		progress_bar(0,$localav,(sprintf "($d,$b): $date"));
+		for(my $i=0; $i < $localav; ++$i){
+		    # only print statistics if enabled and first loop
+		    $printprops = $props && $i==1;
+
+		    my $time = time_knapsack($chcode,$d,$b,$first,$second, {inputSort=>$sort_input});
+		    $t += $time;
+		    $date=localtime(time);
+		    progress_bar($i+1,$localav,(sprintf "($d,$b): %9.3f -- $date", $time));
+		    
+		    # dynamically quit if last run took longer than specified
+		    if($time > 1.1*$time_limit){
+			$skip=1;
+			$localav = $i+1; # for correct average
+			last;
+		    }
+		}
+		$t = sprintf "%.3f", $t/$localav;
+		
+		my $date=localtime(time);
+	      
+		printf "(%${length_d}s,%${length_b}s): %9.3f  --  %-80s\n", $d, $b, $t, $date;
+		print OUTPUT_FILE $t.';';
+		last if($skip);
+	    }
+	    print OUTPUT_FILE "\n";
+	    print $facetprops "\n" if ($props);
+	    print $vertexprops "\n" if ($props);
+	    print $pointprops "\n" if ($props);
+	    # we do not want to skip all the dimension computations which follows
+	    # last if($skip);
+	    $skip = 0;
+	}
+    close OUTPUT_FILE;
+    close $facetprops if ($props);
+    close $vertexprops if ($props);
+    close $pointprops if ($props);
+    }
+}
+
+## If you want to trigger the run commands automatically just remove the next line
+return;
+
+my $path = "/path/to/store/the/output/files";
+###
+## To use only one thread for normaliz set the following environment variable
+# export OMP_NUM_THREADS=1
+
+start_time_knapsack(["libnormaliz", "porta", "beneath_beyond", "ppl"],4,6,40,100, 2,3, { path=>$path });
+start_time_knapsack(["cdd"],4,6,40,[100,100,80],2,3, { path=>$path, only_once=>{"5,100"=>1} });
+start_time_knapsack(["lrs"],4,6,40,[100,70,60],2,3, { path=>$path, only_once=>{"4,100"=>1,"5,70"=>1, "6,60"=>1} });
+
+## different kinds of input sorting
+## 1=random sorting, 2=vertices come first
+start_time_knapsack(["beneath_beyond", "porta"],4,6,40,100, 2,3, { path=>$path, inputSort=>1 });
+start_time_knapsack(["beneath_beyond", "porta"],4,6,40,100, 2,3, { path=>$path, inputSort=>2 });
+
+start_time_knapsack(["lrs"],4,6,40,100,2,3, { path=>$path, inputSort=>1 });
+start_time_knapsack(["lrs"],4,6,40,100,2,3, { path=>$path, inputSort=>2 });
+
+start_time_knapsack(["cdd"],4,6,40,100,2,3, { path=>$path, inputSort=>1 });
+start_time_knapsack(["cdd"],4,6,40,100,2,3, { path=>$path, inputSort=>2 });

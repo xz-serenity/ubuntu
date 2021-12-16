@@ -1,0 +1,5 @@
+"time(dimension x right side) where dimension starts from 4 to 6 and the right hand side from 40 to 100 (steps are 10)"
+"Matlab Commands: dim = 4:6  and  b =40:10:100  and mesh(points,b,import)"
+2.229;9.800;33.682;99.496;282.405;717.921;1482.070;
+6.162;33.009;137.282;579.661;1707.650;4614.850;
+10.132;63.107;307.064;1448.336;4777.220;
