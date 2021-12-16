@@ -1,0 +1,18 @@
+exit
+$f=lp2poly('test.lp');$p = new Polytope<Rational>($f);$s=new Polytope(POINTS=>$p->LATTICE_POINTS, COORDINATE_LABELS=>$p->COORDINATE_LABELS);print_constraints($s);
+vim test.lp
+exit
+exit
+$f=lp2poly('test.lp');$p = new Polytope<Rational>($f);$s=new Polytope(POINTS=>$p->LATTICE_POINTS, COORDINATE_LABELS=>$p->COORDINATE_LABELS);print_constraints($s);
+exit
+exit
+$f=lp2poly('test.lp');$p = new Polytope<Rational>($f);$s=new Polytope(POINTS=>$p->LATTICE_POINTS, COORDINATE_LABELS=>$p->COORDINATE_LABELS);print_constraints($s);
+$f=lp2poly('test.lp');$p = new Polytope<Rational>($f);$s=new Polytope(POINTS=>$p->LATTICE_POINTS, COORDINATE_LABELS=>$p->COORDINATE_LABELS);print $s->FACETS;
+$f=lp2poly('test.lp');$p = new Polytope<Rational>($f);$q=projection($p,[1]);$s=new Polytope(POINTS=>$q->LATTICE_POINTS);print_constraints($s);
+exit
+$f=lp2poly('test.lp');$p = new Polytope<Rational>($f);$q=projection($p,[2,3]);$s=new Polytope(POINTS=>$q->LATTICE_POINTS);print_constraints($s);
+exit
+$f=lp2poly('test.lp');$p = new Polytope<Rational>($f);$q=projection($p,[2,3]);$s=new Polytope(POINTS=>$q->LATTICE_POINTS);print_constraints($s);
+$f=lp2poly('test.lp');$p = new Polytope<Rational>($f);$q=projection($p,[1]);$s=new Polytope(POINTS=>$q->LATTICE_POINTS);print_constraints($s);
+$f=lp2poly('test.lp');$p = new Polytope<Rational>($f);$s=new Polytope(POINTS=>$p->LATTICE_POINTS, COORDINATE_LABELS=>$p->COORDINATE_LABELS);print_constraints($s);
+exit
