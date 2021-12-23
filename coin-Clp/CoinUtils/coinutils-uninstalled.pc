@@ -1,0 +1,10 @@
+prefix=/home/xiaozhou/coin-Clp
+libdir=/home/xiaozhou/coin-Clp/CoinUtils/src
+
+Name: CoinUtils
+Description: COIN-OR Utilities
+URL: https://projects.coin-or.org/CoinUtils
+Version: 2.10
+Libs: ${libdir}/libCoinUtils.la -lm 
+Cflags: -I/home/xiaozhou/coin-Clp/CoinUtils/src -I/home/xiaozhou/coin-Clp/CoinUtils/src
+Requires: 

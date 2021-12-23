@@ -1,0 +1,10 @@
+prefix=/home/xiaozhou/coin-Clp
+libdir=/home/xiaozhou/coin-Clp/Osi/src/Osi
+
+Name: Osi
+Description: COIN-OR Open Solver Interface
+URL: https://projects.coin-or.org/Osi
+Version: 0.107
+Libs: ${libdir}/libOsi.la 
+Cflags: -I/home/xiaozhou/coin-Clp/Osi/src/Osi -I/home/xiaozhou/coin-Clp/Osi/src/Osi
+Requires: coinutils 

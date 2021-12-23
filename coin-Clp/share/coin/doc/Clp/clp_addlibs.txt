@@ -1,0 +1,1 @@
+-L/home/xiaozhou/coin-Clp/lib -lClp -L/home/xiaozhou/coin-Clp/lib -lCoinUtils -lm
